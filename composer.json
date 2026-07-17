@@ -1,0 +1,55 @@
+{
+    "name": "phpdot/rabbitmq",
+    "description": "RabbitMQ client for PHP: publish, consume, retry, dead letter, topology.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Omar Hamdan",
+            "email": "omar@phpdot.com"
+        }
+    ],
+    "keywords": ["rabbitmq", "amqp", "messaging", "publisher", "consumer", "retry", "dead-letter"],
+    "require": {
+        "php": ">=8.5",
+        "php-amqplib/php-amqplib": "^3.0",
+        "phpdot/contracts": "^0.1",
+        "psr/log": "^3.0",
+        "symfony/console": "^8.0"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.94",
+        "phpdot/container": "^0.1",
+        "phpstan/phpstan": "^2.0",
+        "phpstan/phpstan-strict-rules": "^2.0",
+        "phpunit/phpunit": "^13.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "PHPdot\\RabbitMQ\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "PHPdot\\RabbitMQ\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "analyse": "phpstan analyse --memory-limit=256M",
+        "cs-fix": "php-cs-fixer fix",
+        "cs-check": "php-cs-fixer fix --dry-run --diff",
+        "check": [
+            "@test",
+            "@analyse",
+            "@cs-check"
+        ]
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "support": {
+        "source": "https://github.com/phpdot/rabbitmq",
+        "issues": "https://github.com/phpdot/monorepo/issues"
+    }
+}
