@@ -69,7 +69,7 @@ final class ReplayerTest extends TestCase
         $refChannel = $ref->getProperty('channel');
         $refChannel->setValue($connection, $channel);
 
-        $streamConn = $this->createMock(AMQPStreamConnection::class);
+        $streamConn = $this->createStub(AMQPStreamConnection::class);
         $streamConn->method('isConnected')->willReturn(true);
 
         $refConn = $ref->getProperty('connection');
@@ -161,7 +161,8 @@ final class ReplayerTest extends TestCase
         /** @var AMQPMessage|null $captured */
         $captured = null;
 
-        $channel->method('basic_publish')
+        $channel->expects(self::once())
+            ->method('basic_publish')
             ->willReturnCallback(static function (AMQPMessage $msg) use (&$captured): void {
                 $captured = $msg;
             });
@@ -184,7 +185,8 @@ final class ReplayerTest extends TestCase
         /** @var AMQPMessage|null $captured */
         $captured = null;
 
-        $channel->method('basic_publish')
+        $channel->expects(self::once())
+            ->method('basic_publish')
             ->willReturnCallback(static function (AMQPMessage $msg) use (&$captured): void {
                 $captured = $msg;
             });
@@ -207,7 +209,8 @@ final class ReplayerTest extends TestCase
         /** @var AMQPMessage|null $captured */
         $captured = null;
 
-        $channel->method('basic_publish')
+        $channel->expects(self::once())
+            ->method('basic_publish')
             ->willReturnCallback(static function (AMQPMessage $msg) use (&$captured): void {
                 $captured = $msg;
             });
@@ -237,7 +240,8 @@ final class ReplayerTest extends TestCase
         /** @var AMQPMessage|null $captured */
         $captured = null;
 
-        $channel->method('basic_publish')
+        $channel->expects(self::once())
+            ->method('basic_publish')
             ->willReturnCallback(static function (AMQPMessage $msg) use (&$captured): void {
                 $captured = $msg;
             });
@@ -331,6 +335,12 @@ final class ReplayerTest extends TestCase
 
         $this->setupBasicGet($channel, [$msg1, $msg2, $msg3]);
 
+        $channel->expects(self::exactly(2))
+            ->method('basic_ack');
+
+        $channel->expects(self::never())
+            ->method('basic_publish');
+
         $result = $replayer->limit(2)->execute(static fn(Message $m): ReplayAction => ReplayAction::REMOVE);
 
         self::assertSame(2, $result->removed);
@@ -342,6 +352,12 @@ final class ReplayerTest extends TestCase
     {
         [$replayer, $channel] = $this->createReplayer();
         $this->setupBasicGet($channel, []);
+
+        $channel->expects(self::never())
+            ->method('basic_ack');
+
+        $channel->expects(self::never())
+            ->method('basic_publish');
 
         $result = $replayer->execute(static fn(Message $m): ReplayAction => ReplayAction::REPLAY);
 
@@ -387,7 +403,9 @@ final class ReplayerTest extends TestCase
         $callIndex = 0;
         $actions = [ReplayAction::REPLAY, ReplayAction::REMOVE, ReplayAction::SKIP];
 
-        $channel->method('basic_publish')->willReturn(null);
+        $channel->expects(self::once())
+            ->method('basic_publish')
+            ->willReturn(null);
 
         $result = $replayer->execute(static function (Message $m) use (&$callIndex, $actions): ReplayAction {
             return $actions[$callIndex++];

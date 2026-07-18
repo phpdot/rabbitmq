@@ -46,9 +46,9 @@ final class TopologyManagerTest extends TestCase
         $this->expectException(PublishException::class);
         $this->expectExceptionMessageMatches('/not-configured/');
 
-        // We need a channel mock, but since the exception is thrown before any channel call,
-        // we can use a minimal mock
-        $channel = $this->createMock(\PhpAmqpLib\Channel\AMQPChannel::class);
+        // We need a channel double, but since the exception is thrown before any channel call,
+        // we can use a minimal stub
+        $channel = $this->createStub(\PhpAmqpLib\Channel\AMQPChannel::class);
         $manager->prepareForPublish('not-configured', $channel);
     }
 
@@ -63,7 +63,7 @@ final class TopologyManagerTest extends TestCase
         $this->expectException(ConsumeException::class);
         $this->expectExceptionMessageMatches('/not-configured/');
 
-        $channel = $this->createMock(\PhpAmqpLib\Channel\AMQPChannel::class);
+        $channel = $this->createStub(\PhpAmqpLib\Channel\AMQPChannel::class);
         $manager->prepareForConsume('not-configured', $channel);
     }
 

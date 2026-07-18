@@ -66,7 +66,7 @@ final class ConsumerTest extends TestCase
         $refChannel = $ref->getProperty('channel');
         $refChannel->setValue($connection, $channel);
 
-        $streamConn = $this->createMock(AMQPStreamConnection::class);
+        $streamConn = $this->createStub(AMQPStreamConnection::class);
         $streamConn->method('isConnected')->willReturn(true);
 
         $refConn = $ref->getProperty('connection');
@@ -254,6 +254,10 @@ final class ConsumerTest extends TestCase
 
         $this->setupConsumeLoop($channel, $testMsg);
 
+        $channel->expects(self::once())
+            ->method('basic_ack')
+            ->with('tag-1');
+
         /** @var string|null $receivedBody */
         $receivedBody = null;
 
@@ -269,7 +273,10 @@ final class ConsumerTest extends TestCase
     #[Test]
     public function prefetchThrowsForZero(): void
     {
-        [$consumer] = $this->createConsumer();
+        [$consumer, $channel] = $this->createConsumer();
+
+        $channel->expects(self::never())
+            ->method('basic_qos');
 
         $this->expectException(ConsumeException::class);
         $consumer->prefetch(0);
@@ -278,7 +285,10 @@ final class ConsumerTest extends TestCase
     #[Test]
     public function prefetchThrowsForValueAboveMax(): void
     {
-        [$consumer] = $this->createConsumer();
+        [$consumer, $channel] = $this->createConsumer();
+
+        $channel->expects(self::never())
+            ->method('basic_qos');
 
         $this->expectException(ConsumeException::class);
         $consumer->prefetch(65536);
@@ -287,7 +297,10 @@ final class ConsumerTest extends TestCase
     #[Test]
     public function prefetchAcceptsValidRange(): void
     {
-        [$consumer] = $this->createConsumer();
+        [$consumer, $channel] = $this->createConsumer();
+
+        $channel->expects(self::never())
+            ->method('basic_qos');
 
         $result = $consumer->prefetch(100);
 
@@ -301,6 +314,10 @@ final class ConsumerTest extends TestCase
         $testMsg = $this->createAmqpMessage($channel);
 
         $this->setupConsumeLoop($channel, $testMsg);
+
+        $channel->expects(self::once())
+            ->method('basic_nack')
+            ->with('tag-1', false, false);
 
         /** @var int|null $receivedRetryCount */
         $receivedRetryCount = null;
@@ -335,6 +352,10 @@ final class ConsumerTest extends TestCase
         $testMsg = $this->createAmqpMessage($channel);
 
         $this->setupConsumeLoop($channel, $testMsg);
+
+        $channel->expects(self::once())
+            ->method('basic_ack')
+            ->with('tag-1');
 
         /** @var string|null $receivedReason */
         $receivedReason = null;
@@ -496,6 +517,13 @@ final class ConsumerTest extends TestCase
 
         $this->setupConsumeLoop($channel, $testMsg);
 
+        $channel->expects(self::once())
+            ->method('basic_ack')
+            ->with('tag-1');
+
+        $channel->expects(self::never())
+            ->method('basic_publish');
+
         /** @var string|null $receivedReason */
         $receivedReason = null;
 
@@ -524,6 +552,10 @@ final class ConsumerTest extends TestCase
 
         $this->setupConsumeLoop($channel, $testMsg);
 
+        $channel->expects(self::once())
+            ->method('basic_nack')
+            ->with('tag-1', false, false);
+
         /** @var int|null $receivedRetryCount */
         $receivedRetryCount = null;
 
@@ -544,6 +576,10 @@ final class ConsumerTest extends TestCase
         $testMsg = $this->createAmqpMessage($channel, 'specific body content');
 
         $this->setupConsumeLoop($channel, $testMsg);
+
+        $channel->expects(self::once())
+            ->method('basic_ack')
+            ->with('tag-1');
 
         /** @var string|null $receivedBody */
         $receivedBody = null;
@@ -591,7 +627,8 @@ final class ConsumerTest extends TestCase
             });
 
         $published = false;
-        $channel->method('basic_publish')
+        $channel->expects(self::once())
+            ->method('basic_publish')
             ->willReturnCallback(function () use (&$published): void {
                 $published = true;
             });
@@ -626,7 +663,7 @@ final class ConsumerTest extends TestCase
         $reflection = new ReflectionClass($connection);
 
         $connProp = $reflection->getProperty('connection');
-        $mockConn = $this->createMock(AMQPStreamConnection::class);
+        $mockConn = $this->createStub(AMQPStreamConnection::class);
         $mockConn->method('isConnected')->willReturn(true);
         $connProp->setValue($connection, $mockConn);
 
@@ -656,9 +693,9 @@ final class ConsumerTest extends TestCase
 
     private function createMockChannel(): AMQPChannel
     {
-        $mock = $this->createMock(AMQPChannel::class);
-        $mock->method('basic_ack')->willReturn(null);
+        $stub = $this->createStub(AMQPChannel::class);
+        $stub->method('basic_ack')->willReturn(null);
 
-        return $mock;
+        return $stub;
     }
 }

@@ -63,7 +63,7 @@ final class PublisherTest extends TestCase
         $refChannel = $ref->getProperty('channel');
         $refChannel->setValue($connection, $channel);
 
-        $streamConn = $this->createMock(AMQPStreamConnection::class);
+        $streamConn = $this->createStub(AMQPStreamConnection::class);
         $streamConn->method('isConnected')->willReturn(true);
 
         $refConn = $ref->getProperty('connection');
@@ -244,7 +244,10 @@ final class PublisherTest extends TestCase
     #[Test]
     public function priorityThrowsForNegativeValue(): void
     {
-        [$publisher] = $this->createPublisher('body');
+        [$publisher, $channel] = $this->createPublisher('body');
+
+        $channel->expects(self::never())
+            ->method('basic_publish');
 
         $this->expectException(PublishException::class);
         $publisher->priority(-1);
@@ -253,7 +256,10 @@ final class PublisherTest extends TestCase
     #[Test]
     public function priorityThrowsForValueAboveTen(): void
     {
-        [$publisher] = $this->createPublisher('body');
+        [$publisher, $channel] = $this->createPublisher('body');
+
+        $channel->expects(self::never())
+            ->method('basic_publish');
 
         $this->expectException(PublishException::class);
         $publisher->priority(11);

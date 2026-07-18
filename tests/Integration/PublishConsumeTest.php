@@ -23,10 +23,10 @@ final class PublishConsumeTest extends TestCase
     {
         try {
             (new RabbitMQConnection(new RabbitMQConfig(
-                host: 'localhost',
-                port: 5672,
-                username: 'guest',
-                password: 'guest',
+                host: getenv('RABBITMQ_HOST') ?: 'localhost',
+                port: (int) (getenv('RABBITMQ_PORT') ?: 5672),
+                username: getenv('RABBITMQ_USER') ?: 'guest',
+                password: getenv('RABBITMQ_PASS') ?: 'guest',
                 timeoutMs: 500,
                 maxRetries: 1,
             )))->connect()->close();
@@ -38,17 +38,17 @@ final class PublishConsumeTest extends TestCase
         $this->queueName = 'test.queue.' . uniqid();
 
         $this->connection = new RabbitMQConnection(new RabbitMQConfig(
-            host: 'localhost',
-            port: 5672,
-            username: 'guest',
-            password: 'guest',
+            host: getenv('RABBITMQ_HOST') ?: 'localhost',
+            port: (int) (getenv('RABBITMQ_PORT') ?: 5672),
+            username: getenv('RABBITMQ_USER') ?: 'guest',
+            password: getenv('RABBITMQ_PASS') ?: 'guest',
             exchanges: [
-                $this->exchangeName => ['type' => 'direct', 'durable' => false, 'auto_delete' => true],
+                $this->exchangeName => ['type' => 'direct', 'durable' => true, 'auto_delete' => true],
             ],
             queues: [
                 $this->queueName => [
                     'bindings' => [['exchange' => $this->exchangeName, 'routing_key' => 'test.key']],
-                    'durable' => false,
+                    'durable' => true,
                     'auto_delete' => true,
                 ],
             ],
@@ -275,8 +275,8 @@ final class PublishConsumeTest extends TestCase
 
         $this->connection->ensureConnected();
 
-        $channel->exchange_declare($this->exchangeName, 'direct', false, false, true);
-        $channel->queue_declare($this->queueName, false, false, false, true);
+        $channel->exchange_declare($this->exchangeName, 'direct', false, true, true);
+        $channel->queue_declare($this->queueName, false, true, false, true);
         $channel->queue_bind($this->queueName, $this->exchangeName, 'test.key');
 
         /** @var AMQPMessage|null $amqpMsg */

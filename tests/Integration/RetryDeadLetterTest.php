@@ -26,10 +26,10 @@ final class RetryDeadLetterTest extends TestCase
     {
         try {
             (new RabbitMQConnection(new RabbitMQConfig(
-                host: 'localhost',
-                port: 5672,
-                username: 'guest',
-                password: 'guest',
+                host: getenv('RABBITMQ_HOST') ?: 'localhost',
+                port: (int) (getenv('RABBITMQ_PORT') ?: 5672),
+                username: getenv('RABBITMQ_USER') ?: 'guest',
+                password: getenv('RABBITMQ_PASS') ?: 'guest',
                 timeoutMs: 500,
                 maxRetries: 1,
             )))->connect()->close();
@@ -44,25 +44,25 @@ final class RetryDeadLetterTest extends TestCase
         $this->deadQueue = 'test.dead.queue.' . $suffix;
 
         $this->connection = new RabbitMQConnection(new RabbitMQConfig(
-            host: 'localhost',
-            port: 5672,
-            username: 'guest',
-            password: 'guest',
+            host: getenv('RABBITMQ_HOST') ?: 'localhost',
+            port: (int) (getenv('RABBITMQ_PORT') ?: 5672),
+            username: getenv('RABBITMQ_USER') ?: 'guest',
+            password: getenv('RABBITMQ_PASS') ?: 'guest',
             exchanges: [
-                $this->exchangeName => ['type' => 'direct', 'durable' => false, 'auto_delete' => true],
-                $this->deadExchange => ['type' => 'direct', 'durable' => false, 'auto_delete' => true],
+                $this->exchangeName => ['type' => 'direct', 'durable' => true, 'auto_delete' => true],
+                $this->deadExchange => ['type' => 'direct', 'durable' => true, 'auto_delete' => true],
             ],
             queues: [
                 $this->queueName => [
                     'bindings' => [['exchange' => $this->exchangeName, 'routing_key' => 'test.key']],
-                    'durable' => false,
+                    'durable' => true,
                     'auto_delete' => true,
                     'retry' => ['enable' => true, 'delay_ms' => 100],
                     'dead' => ['exchange' => $this->deadExchange, 'routing_key' => 'dead.key'],
                 ],
                 $this->deadQueue => [
                     'bindings' => [['exchange' => $this->deadExchange, 'routing_key' => 'dead.key']],
-                    'durable' => false,
+                    'durable' => true,
                     'auto_delete' => true,
                 ],
             ],
@@ -93,22 +93,23 @@ final class RetryDeadLetterTest extends TestCase
     public function retryInfrastructureCreatedByTopologyManager(): void
     {
         $config = new RabbitMQConfig(
-            host: 'localhost',
+            host: getenv('RABBITMQ_HOST') ?: 'localhost',
+            port: (int) (getenv('RABBITMQ_PORT') ?: 5672),
             exchanges: [
-                $this->exchangeName => ['type' => 'direct', 'durable' => false, 'auto_delete' => true],
-                $this->deadExchange => ['type' => 'direct', 'durable' => false, 'auto_delete' => true],
+                $this->exchangeName => ['type' => 'direct', 'durable' => true, 'auto_delete' => true],
+                $this->deadExchange => ['type' => 'direct', 'durable' => true, 'auto_delete' => true],
             ],
             queues: [
                 $this->queueName => [
                     'bindings' => [['exchange' => $this->exchangeName, 'routing_key' => 'test.key']],
-                    'durable' => false,
+                    'durable' => true,
                     'auto_delete' => true,
                     'retry' => ['enable' => true, 'delay_ms' => 100],
                     'dead' => ['exchange' => $this->deadExchange, 'routing_key' => 'dead.key'],
                 ],
                 $this->deadQueue => [
                     'bindings' => [['exchange' => $this->deadExchange, 'routing_key' => 'dead.key']],
-                    'durable' => false,
+                    'durable' => true,
                     'auto_delete' => true,
                 ],
             ],
@@ -131,22 +132,23 @@ final class RetryDeadLetterTest extends TestCase
     public function nackWithDlxRoutesToRetryQueue(): void
     {
         $config = new RabbitMQConfig(
-            host: 'localhost',
+            host: getenv('RABBITMQ_HOST') ?: 'localhost',
+            port: (int) (getenv('RABBITMQ_PORT') ?: 5672),
             exchanges: [
-                $this->exchangeName => ['type' => 'direct', 'durable' => false, 'auto_delete' => true],
-                $this->deadExchange => ['type' => 'direct', 'durable' => false, 'auto_delete' => true],
+                $this->exchangeName => ['type' => 'direct', 'durable' => true, 'auto_delete' => true],
+                $this->deadExchange => ['type' => 'direct', 'durable' => true, 'auto_delete' => true],
             ],
             queues: [
                 $this->queueName => [
                     'bindings' => [['exchange' => $this->exchangeName, 'routing_key' => 'test.key']],
-                    'durable' => false,
+                    'durable' => true,
                     'auto_delete' => true,
                     'retry' => ['enable' => true, 'delay_ms' => 100],
                     'dead' => ['exchange' => $this->deadExchange, 'routing_key' => 'dead.key'],
                 ],
                 $this->deadQueue => [
                     'bindings' => [['exchange' => $this->deadExchange, 'routing_key' => 'dead.key']],
-                    'durable' => false,
+                    'durable' => true,
                     'auto_delete' => true,
                 ],
             ],
