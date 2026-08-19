@@ -20,7 +20,7 @@ message replay, a set of Symfony Console commands for operating queues, and a co
 |---|---|
 | PHP | `>= 8.5` |
 | `php-amqplib/php-amqplib` | `^3.0` |
-| `phpdot/contracts` | `^0.1` |
+| `phpdot/contracts` | `^0.2` |
 | `psr/log` | `^3.0` |
 | `symfony/console` | `^8.0` |
 
