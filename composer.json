@@ -9,7 +9,15 @@
             "email": "omar@phpdot.com"
         }
     ],
-    "keywords": ["rabbitmq", "amqp", "messaging", "publisher", "consumer", "retry", "dead-letter"],
+    "keywords": [
+        "rabbitmq",
+        "amqp",
+        "messaging",
+        "publisher",
+        "consumer",
+        "retry",
+        "dead-letter"
+    ],
     "require": {
         "php": ">=8.5",
         "php-amqplib/php-amqplib": "^3.0",
@@ -23,6 +31,9 @@
         "phpstan/phpstan": "^2.0",
         "phpstan/phpstan-strict-rules": "^2.0",
         "phpunit/phpunit": "^13.0"
+    },
+    "suggest": {
+        "phpdot/container": "Autowires the container-attribute services and #[Config] DTOs declared in src (the attributes stay inert until reflected, so standalone consumers don't need it installed)."
     },
     "autoload": {
         "psr-4": {

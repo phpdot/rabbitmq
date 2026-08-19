@@ -29,12 +29,12 @@ final class Consumer
     /**
      * @var \Closure(Message, int): void|null
      */
-    private ?Closure $onRetryCallback = null;
+    private null|Closure $onRetryCallback = null;
 
     /**
      * @var \Closure(Message, string): void|null
      */
-    private ?Closure $onDeadCallback = null;
+    private null|Closure $onDeadCallback = null;
 
     /**
      * Creates a new consumer for the given queue.

@@ -9,9 +9,9 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use PHPdot\RabbitMQ\Config\RabbitMQConfig;
-use PHPdot\RabbitMQ\RabbitMQConnection;
 use PHPdot\RabbitMQ\Enum\ReplayAction;
 use PHPdot\RabbitMQ\Message;
+use PHPdot\RabbitMQ\RabbitMQConnection;
 use PHPdot\RabbitMQ\Replayer;
 use PHPdot\RabbitMQ\Topology\TopologyManager;
 use PHPUnit\Framework\Attributes\Test;
@@ -30,7 +30,7 @@ final class ReplayerTest extends TestCase
      *
      * @return array{0: Replayer, 1: AMQPChannel&\PHPUnit\Framework\MockObject\MockObject, 2: RabbitMQConnection}
      */
-    private function createReplayer(?RabbitMQConfig $config = null): array
+    private function createReplayer(null|RabbitMQConfig $config = null): array
     {
         $channel = $this->createMock(AMQPChannel::class);
 

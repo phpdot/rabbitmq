@@ -9,11 +9,11 @@ use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use PHPdot\RabbitMQ\Config\RabbitMQConfig;
-use PHPdot\RabbitMQ\RabbitMQConnection;
 use PHPdot\RabbitMQ\Consumer;
 use PHPdot\RabbitMQ\Enum\TaskStatus;
 use PHPdot\RabbitMQ\Exception\ConsumeException;
 use PHPdot\RabbitMQ\Message;
+use PHPdot\RabbitMQ\RabbitMQConnection;
 use PHPdot\RabbitMQ\Topology\TopologyManager;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -28,7 +28,7 @@ final class ConsumerTest extends TestCase
      *
      * @return array{0: Consumer, 1: AMQPChannel&\PHPUnit\Framework\MockObject\MockObject}
      */
-    private function createConsumer(string $queue = 'test.queue', ?RabbitMQConfig $config = null): array
+    private function createConsumer(string $queue = 'test.queue', null|RabbitMQConfig $config = null): array
     {
         $channel = $this->createMock(AMQPChannel::class);
 

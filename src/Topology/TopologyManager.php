@@ -189,7 +189,7 @@ final class TopologyManager
      *
      * @return string|null The DLX exchange name, or null if not configured
      */
-    public function getDeadLetterExchange(string $queue): ?string
+    public function getDeadLetterExchange(string $queue): null|string
     {
         $queueConfig = $this->config->queues[$queue] ?? [];
         $dead = $queueConfig['dead'] ?? null;

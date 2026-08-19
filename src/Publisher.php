@@ -32,7 +32,7 @@ final class Publisher
      */
     private array $properties = [];
 
-    private ?int $priority = null;
+    private null|int $priority = null;
 
     private string $messageId = '';
 
@@ -92,7 +92,7 @@ final class Publisher
      *
      * @return Publisher
      */
-    public function priority(?int $priority): self
+    public function priority(null|int $priority): self
     {
         if ($priority !== null && ($priority < 0 || $priority > 10)) {
             throw new PublishException(

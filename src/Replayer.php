@@ -24,7 +24,7 @@ use Throwable;
 
 final class Replayer
 {
-    private ?int $limit = null;
+    private null|int $limit = null;
 
     /**
      * Creates a new replayer for the given dead letter queue.

@@ -6,8 +6,8 @@ namespace PHPdot\RabbitMQ\Tests\Integration;
 
 use PhpAmqpLib\Message\AMQPMessage;
 use PHPdot\RabbitMQ\Config\RabbitMQConfig;
-use PHPdot\RabbitMQ\RabbitMQConnection;
 use PHPdot\RabbitMQ\Message;
+use PHPdot\RabbitMQ\RabbitMQConnection;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -71,7 +71,7 @@ final class PublishConsumeTest extends TestCase
         $this->connection->close();
     }
 
-    private function getOneMessage(): ?Message
+    private function getOneMessage(): null|Message
     {
         $channel = $this->connection->getChannel();
 

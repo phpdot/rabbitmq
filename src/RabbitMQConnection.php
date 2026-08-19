@@ -25,9 +25,9 @@ use Throwable;
 
 final class RabbitMQConnection
 {
-    private ?AMQPStreamConnection $connection = null;
+    private null|AMQPStreamConnection $connection = null;
 
-    private ?AMQPChannel $channel = null;
+    private null|AMQPChannel $channel = null;
 
     private bool $connected = false;
 
@@ -43,7 +43,7 @@ final class RabbitMQConnection
         private readonly RabbitMQConfig $config,
         private readonly LoggerInterface $logger = new NullLogger(),
     ) {
-        $this->topology = new TopologyManager($this->config);
+        $this->topology = new TopologyManager($this->config, $this->logger);
     }
 
     /**

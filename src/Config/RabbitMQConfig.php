@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace PHPdot\RabbitMQ\Config;
 
 use PHPdot\Container\Attribute\Config;
+use SensitiveParameter;
 
 #[Config('rabbitmq')]
 final readonly class RabbitMQConfig
@@ -37,6 +38,7 @@ final readonly class RabbitMQConfig
         public string $host = 'localhost',
         public int $port = 5672,
         public string $username = 'guest',
+        #[SensitiveParameter]
         public string $password = 'guest',
         public string $vhost = '/',
         public int $timeoutMs = 3000,
