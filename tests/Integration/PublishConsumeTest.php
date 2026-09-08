@@ -6,8 +6,10 @@ namespace PHPdot\RabbitMQ\Tests\Integration;
 
 use PhpAmqpLib\Message\AMQPMessage;
 use PHPdot\RabbitMQ\Config\RabbitMQConfig;
+use PHPdot\RabbitMQ\Exception\ConnectionException;
 use PHPdot\RabbitMQ\Message;
 use PHPdot\RabbitMQ\RabbitMQConnection;
+use PHPdot\RabbitMQ\Tests\Support\SilentTracer;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -29,8 +31,8 @@ final class PublishConsumeTest extends TestCase
                 password: getenv('RABBITMQ_PASS') ?: 'guest',
                 timeoutMs: 500,
                 maxRetries: 1,
-            )))->connect()->close();
-        } catch (\Throwable $e) {
+            ), new SilentTracer()))->connect()->close();
+        } catch (ConnectionException $e) {
             $this->markTestSkipped('RabbitMQ is not available: ' . $e->getMessage());
         }
 
@@ -52,7 +54,7 @@ final class PublishConsumeTest extends TestCase
                     'auto_delete' => true,
                 ],
             ],
-        ));
+        ), new SilentTracer());
     }
 
     protected function tearDown(): void

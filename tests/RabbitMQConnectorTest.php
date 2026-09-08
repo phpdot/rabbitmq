@@ -8,6 +8,7 @@ use PHPdot\Contracts\Pool\ConnectorInterface;
 use PHPdot\RabbitMQ\Config\RabbitMQConfig;
 use PHPdot\RabbitMQ\RabbitMQConnection;
 use PHPdot\RabbitMQ\RabbitMQConnector;
+use PHPdot\RabbitMQ\Tests\Support\SilentTracer;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
@@ -24,7 +25,7 @@ final class RabbitMQConnectorTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->connector = new RabbitMQConnector(new RabbitMQConfig());
+        $this->connector = new RabbitMQConnector(new SilentTracer(), new RabbitMQConfig());
     }
 
     #[Test]
@@ -42,7 +43,7 @@ final class RabbitMQConnectorTest extends TestCase
     #[Test]
     public function is_alive_returns_false_for_a_disconnected_connection(): void
     {
-        $connection = new RabbitMQConnection(new RabbitMQConfig());
+        $connection = new RabbitMQConnection(new RabbitMQConfig(), new SilentTracer());
 
         self::assertFalse($this->connector->isAlive($connection));
     }
@@ -58,7 +59,7 @@ final class RabbitMQConnectorTest extends TestCase
     #[Test]
     public function close_swallows_errors_from_the_connection(): void
     {
-        $connection = new RabbitMQConnection(new RabbitMQConfig());
+        $connection = new RabbitMQConnection(new RabbitMQConfig(), new SilentTracer());
 
         // Closing an already-disconnected connection must not throw.
         $this->connector->close($connection);

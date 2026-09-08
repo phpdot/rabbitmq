@@ -16,10 +16,11 @@ namespace PHPdot\RabbitMQ;
 use Closure;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
+use PHPdot\Contracts\Logs\SpanInterface;
+use PHPdot\Contracts\Logs\TracerInterface;
 use PHPdot\RabbitMQ\Enum\TaskStatus;
 use PHPdot\RabbitMQ\Exception\ConsumeException;
 use PHPdot\RabbitMQ\Topology\TopologyManager;
-use Psr\Log\LoggerInterface;
 use Throwable;
 
 final class Consumer
@@ -42,13 +43,13 @@ final class Consumer
      * @param string $queue The queue name to consume from
      * @param RabbitMQConnection $connection The AMQP connection
      * @param TopologyManager $topology The topology manager for queue declarations
-     * @param LoggerInterface $logger The logger instance
+     * @param TracerInterface $tracer The logger instance
      */
     public function __construct(
         private readonly string $queue,
         private readonly RabbitMQConnection $connection,
         private readonly TopologyManager $topology,
-        private readonly LoggerInterface $logger,
+        private readonly TracerInterface $tracer,
     ) {}
 
     /**
@@ -172,12 +173,30 @@ final class Consumer
                         return;
                     }
 
+                    $rawBody = $amqpMsg->getBody();
                     $amqpMsg->setBody($decompressed);
                 }
             }
 
             $message = Message::fromAMQP($amqpMsg, $this->queue);
-            $status = $callback($message);
+
+            if (isset($rawBody)) {
+                $amqpMsg->setBody($rawBody);
+            }
+            $status = $this->tracer->channel('queue')->trace(
+                'mq.consume',
+                'consumer',
+                function (SpanInterface $span) use ($callback, $message): TaskStatus {
+                    $span->setAttribute('mq.queue', $this->queue)
+                        ->setAttribute('mq.message_id', $message->messageId());
+
+                    $status = $callback($message);
+
+                    $span->setAttribute('mq.outcome', $status->value);
+
+                    return $status;
+                },
+            );
 
             match ($status) {
                 TaskStatus::SUCCESS => $this->handleSuccess($amqpMsg, $message),
@@ -185,13 +204,72 @@ final class Consumer
                 TaskStatus::DEAD => $this->handleDead($amqpMsg, $message, 'Marked as dead by handler'),
             };
         } catch (Throwable $e) {
-            $this->logger->error('Consumer error', [
+            $this->tracer->channel('queue')->error('Consumer error', [
                 'queue' => $this->queue,
-                'error' => $e->getMessage(),
+                'exception' => [
+                    'class' => $e::class,
+                    'message' => $e->getMessage(),
+                    'code' => $e->getCode(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ],
             ]);
 
             $message = Message::fromAMQP($amqpMsg, $this->queue);
             $this->handleDead($amqpMsg, $message, $e->getMessage());
+        }
+    }
+
+    /**
+     * Fire the retry callback without letting its failure re-enter the
+     * settle paths — the message is already nacked; a throwing callback
+     * must not produce a second settle on the same delivery.
+     *
+     * @param Message $message The retried message
+     * @param int $attempt The attempt number the callback is told about
+     *
+     * @return void
+     */
+    private function fireRetryCallback(Message $message, int $attempt): void
+    {
+        if ($this->onRetryCallback === null) {
+            return;
+        }
+
+        try {
+            ($this->onRetryCallback)($message, $attempt);
+        } catch (Throwable $callbackFailure) {
+            $this->tracer->channel('queue')->error('onRetry callback threw — the message stays settled', [
+                'queue' => $this->queue,
+                'message_id' => $message->messageId(),
+                'error' => $callbackFailure->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Fire the dead callback under the same law — the message is already
+     * settled when the callback runs.
+     *
+     * @param Message $message The dead-lettered message
+     * @param string $reason Why it died
+     *
+     * @return void
+     */
+    private function fireDeadCallback(Message $message, string $reason): void
+    {
+        if ($this->onDeadCallback === null) {
+            return;
+        }
+
+        try {
+            ($this->onDeadCallback)($message, $reason);
+        } catch (Throwable $callbackFailure) {
+            $this->tracer->channel('queue')->error('onDead callback threw — the message stays settled', [
+                'queue' => $this->queue,
+                'message_id' => $message->messageId(),
+                'error' => $callbackFailure->getMessage(),
+            ]);
         }
     }
 
@@ -207,7 +285,7 @@ final class Consumer
     {
         $amqpMsg->ack();
 
-        $this->logger->debug('Message processed successfully', [
+        $this->tracer->channel('queue')->debug('Message processed successfully', [
             'queue' => $this->queue,
             'message_id' => $message->messageId(),
         ]);
@@ -227,7 +305,7 @@ final class Consumer
         $maxRetries = $message->maxRetries();
 
         if ($maxRetries > 0 && $retryCount >= $maxRetries) {
-            $this->logger->warning('Max retries exceeded, sending to dead letter', [
+            $this->tracer->channel('queue')->notice('Max retries exceeded, sending to dead letter', [
                 'queue' => $this->queue,
                 'message_id' => $message->messageId(),
                 'retry_count' => $retryCount,
@@ -239,13 +317,35 @@ final class Consumer
             return;
         }
 
-        $amqpMsg->nack(false);
+        if (!$this->topology->hasRetryInfrastructure($this->queue)) {
+            $amqpMsg->nack(false);
 
-        if ($this->onRetryCallback !== null) {
-            ($this->onRetryCallback)($message, $retryCount + 1);
+            if ($this->onRetryCallback !== null) {
+                ($this->onRetryCallback)($message, $retryCount + 1);
+            }
+
+            $this->tracer->channel('queue')->error('RETRY verdict on a queue with no retry infrastructure — message discarded', [
+                'queue' => $this->queue,
+                'message_id' => $message->messageId(),
+                'fix' => "enable retry on the queue so nack(requeue: false) lands in its retry queue",
+            ]);
+
+            return;
         }
 
-        $this->logger->debug('Message nacked for retry', [
+        if ($maxRetries <= 0) {
+            $this->tracer->channel('queue')->warning('Retrying without an x-retries-max cap — the message will cycle indefinitely', [
+                'queue' => $this->queue,
+                'message_id' => $message->messageId(),
+                'fix' => 'Publisher::retry(n) stamps the cap',
+            ]);
+        }
+
+        $amqpMsg->nack(false);
+
+        $this->fireRetryCallback($message, $retryCount + 1);
+
+        $this->tracer->channel('queue')->debug('Message nacked for retry', [
             'queue' => $this->queue,
             'message_id' => $message->messageId(),
             'retry_count' => $retryCount + 1,
@@ -263,64 +363,77 @@ final class Consumer
      */
     private function handleDead(AMQPMessage $amqpMsg, Message $message, string $reason): void
     {
-        $amqpMsg->ack();
-
         $dlxExchange = $this->topology->getDeadLetterExchange($this->queue);
 
         if ($dlxExchange === null) {
-            $this->logger->warning('No dead letter exchange configured, message discarded', [
+            $amqpMsg->nack(false);
+
+            $this->tracer->channel('queue')->error('No dead letter exchange configured, message discarded', [
                 'queue' => $this->queue,
                 'message_id' => $message->messageId(),
                 'reason' => $reason,
             ]);
 
-            if ($this->onDeadCallback !== null) {
-                ($this->onDeadCallback)($message, $reason);
-            }
+            $this->fireDeadCallback($message, $reason);
 
             return;
         }
 
         $dlxRoutingKey = $this->topology->getDeadLetterRoutingKey($this->queue);
-        $channel = $this->connection->getChannel();
 
-        $headers = $message->headers();
-        $headers['x-failed-queue'] = $this->queue;
-        $headers['x-failed-reason'] = $reason;
-        $headers['x-failed-timestamp'] = time();
+        try {
+            $channel = $this->connection->getChannel();
+            $this->topology->prepareForPublish($dlxExchange, $channel);
 
-        $applicationHeaders = new AMQPTable($headers);
+            $headers = $message->headers();
+            $headers['x-failed-queue'] = $this->queue;
+            $headers['x-failed-reason'] = $reason;
+            $headers['x-failed-timestamp'] = time();
 
-        /**
-         * @var array<string, mixed> $properties
-         */
-        $properties = [
-            'delivery_mode' => 2,
-            'application_headers' => $applicationHeaders,
-        ];
+            $applicationHeaders = new AMQPTable($headers);
 
-        $contentType = $amqpMsg->has('content_type') ? $amqpMsg->get('content_type') : null;
-        if (is_string($contentType)) {
-            $properties['content_type'] = $contentType;
+            /**
+             * @var array<string, mixed> $properties
+             */
+            $properties = [
+                'delivery_mode' => 2,
+                'application_headers' => $applicationHeaders,
+            ];
+
+            $contentType = $amqpMsg->has('content_type') ? $amqpMsg->get('content_type') : null;
+            if (is_string($contentType)) {
+                $properties['content_type'] = $contentType;
+            }
+
+            $contentEncoding = $amqpMsg->has('content_encoding') ? $amqpMsg->get('content_encoding') : null;
+            if (is_string($contentEncoding)) {
+                $properties['content_encoding'] = $contentEncoding;
+            }
+
+            if ($message->messageId() !== '') {
+                $properties['message_id'] = $message->messageId();
+            }
+
+            $deadMessage = new AMQPMessage($amqpMsg->getBody(), $properties);
+            $channel->basic_publish($deadMessage, $dlxExchange, $dlxRoutingKey !== '' ? $dlxRoutingKey : $this->queue);
+        } catch (Throwable $publishFailure) {
+            $amqpMsg->nack(true);
+
+            $this->tracer->channel('queue')->error('Dead-letter publish failed — message requeued, not lost', [
+                'queue' => $this->queue,
+                'message_id' => $message->messageId(),
+                'reason' => $reason,
+                'error' => $publishFailure->getMessage(),
+            ]);
+
+            return;
         }
 
-        $contentEncoding = $amqpMsg->has('content_encoding') ? $amqpMsg->get('content_encoding') : null;
-        if (is_string($contentEncoding)) {
-            $properties['content_encoding'] = $contentEncoding;
-        }
+        $amqpMsg->ack();
 
-        if ($message->messageId() !== '') {
-            $properties['message_id'] = $message->messageId();
-        }
+        $this->fireDeadCallback($message, $reason);
 
-        $deadMessage = new AMQPMessage($amqpMsg->getBody(), $properties);
-        $channel->basic_publish($deadMessage, $dlxExchange, $dlxRoutingKey !== '' ? $dlxRoutingKey : $this->queue);
-
-        if ($this->onDeadCallback !== null) {
-            ($this->onDeadCallback)($message, $reason);
-        }
-
-        $this->logger->warning('Message sent to dead letter', [
+        $this->tracer->channel('queue')->notice('Message sent to dead letter', [
             'queue' => $this->queue,
             'message_id' => $message->messageId(),
             'reason' => $reason,
@@ -329,6 +442,10 @@ final class Consumer
 
     /**
      * Extracts the retry count from the x-death header of an AMQP message.
+     *
+     * Counts this queue's own rejections only. A retry loop records one x-death entry per hop —
+     * rejected out of the queue, expired out of its retry queue — so summing both would burn
+     * the caller's x-retries-max budget at twice the rate it reads.
      *
      * @param AMQPMessage $amqpMsg The raw AMQP message
      *
@@ -354,22 +471,20 @@ final class Consumer
             return 0;
         }
 
-        $retryQueue = $this->queue . '.retry';
-        $count = 0;
-
         foreach ($headers['x-death'] as $death) {
             if (!is_array($death)) {
                 continue;
             }
 
-            $deathQueue = $death['queue'] ?? '';
-
-            if ($deathQueue === $this->queue || $deathQueue === $retryQueue) {
-                $deathCount = $death['count'] ?? 1;
-                $count += is_int($deathCount) ? $deathCount : (is_numeric($deathCount) ? intval($deathCount) : 1);
+            if (($death['queue'] ?? '') !== $this->queue) {
+                continue;
             }
+
+            $deathCount = $death['count'] ?? 1;
+
+            return is_int($deathCount) ? $deathCount : (is_numeric($deathCount) ? intval($deathCount) : 1);
         }
 
-        return $count;
+        return 0;
     }
 }

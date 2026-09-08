@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace PHPdot\RabbitMQ\Cli\Command;
 
 use PhpAmqpLib\Wire\AMQPTable;
+use PHPdot\Contracts\Logs\TracerInterface;
 use PHPdot\RabbitMQ\Config\RabbitMQConfig;
 use PHPdot\RabbitMQ\RabbitMQConnection;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -36,6 +37,7 @@ final class DlqAnalyzeCommand extends Command
      * @param RabbitMQConfig $config Broker connection settings
      */
     public function __construct(
+        private readonly TracerInterface $tracer,
         private readonly RabbitMQConfig $config,
     ) {
         parent::__construct();
@@ -55,7 +57,7 @@ final class DlqAnalyzeCommand extends Command
         $limitOpt = $input->getOption('limit');
         $limit = max(1, is_numeric($limitOpt) ? (int) $limitOpt : 500);
 
-        $connection = new RabbitMQConnection($this->config);
+        $connection = new RabbitMQConnection($this->config, $this->tracer);
         try {
             $connection->connect();
         } catch (Throwable $e) {

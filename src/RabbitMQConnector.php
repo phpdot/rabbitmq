@@ -22,6 +22,7 @@ declare(strict_types=1);
 
 namespace PHPdot\RabbitMQ;
 
+use PHPdot\Contracts\Logs\TracerInterface;
 use PHPdot\Contracts\Pool\ConnectorInterface;
 use PHPdot\RabbitMQ\Config\RabbitMQConfig;
 use Throwable;
@@ -29,11 +30,14 @@ use Throwable;
 final class RabbitMQConnector implements ConnectorInterface
 {
     /**
-     * Wire the connector to the config every new connection is built from.
+     * Wire the connector to the tracer and the config every new connection
+     * is built from.
      *
+     * @param TracerInterface $tracer Observability for each connection this builds
      * @param RabbitMQConfig $config Broker connection settings for each RabbitMQConnection this builds
      */
     public function __construct(
+        private readonly TracerInterface $tracer,
         private readonly RabbitMQConfig $config,
     ) {}
 
@@ -43,7 +47,7 @@ final class RabbitMQConnector implements ConnectorInterface
      */
     public function connect(): object
     {
-        $connection = new RabbitMQConnection($this->config);
+        $connection = new RabbitMQConnection($this->config, $this->tracer);
         $connection->connect();
 
         return $connection;

@@ -16,10 +16,10 @@ namespace PHPdot\RabbitMQ;
 
 use Closure;
 use PhpAmqpLib\Message\AMQPMessage;
+use PHPdot\Contracts\Logs\TracerInterface;
 use PHPdot\RabbitMQ\Enum\ReplayAction;
 use PHPdot\RabbitMQ\Result\ReplayResult;
 use PHPdot\RabbitMQ\Topology\TopologyManager;
-use Psr\Log\LoggerInterface;
 use Throwable;
 
 final class Replayer
@@ -32,13 +32,13 @@ final class Replayer
      * @param string $queue The dead letter queue name to replay from
      * @param RabbitMQConnection $connection The AMQP connection
      * @param TopologyManager $topology The topology manager for queue declarations
-     * @param LoggerInterface $logger The logger instance
+     * @param TracerInterface $tracer The logger instance
      */
     public function __construct(
         private readonly string $queue,
         private readonly RabbitMQConnection $connection,
         private readonly TopologyManager $topology,
-        private readonly LoggerInterface $logger,
+        private readonly TracerInterface $tracer,
     ) {}
 
     /**
@@ -123,7 +123,7 @@ final class Replayer
         $originalRoutingKey = $message->originalRoutingKey();
 
         if ($originalExchange === '') {
-            $this->logger->warning('Cannot replay message without original exchange, acknowledging', [
+            $this->tracer->channel('queue')->error('Cannot replay message without original exchange, acknowledging', [
                 'queue' => $this->queue,
                 'message_id' => $message->messageId(),
             ]);
@@ -169,7 +169,7 @@ final class Replayer
         $amqpMsg->ack();
         $replayed++;
 
-        $this->logger->info('Message replayed', [
+        $this->tracer->channel('queue')->info('Message replayed', [
             'queue' => $this->queue,
             'message_id' => $message->messageId(),
             'exchange' => $originalExchange,
@@ -191,7 +191,7 @@ final class Replayer
         $amqpMsg->ack();
         $removed++;
 
-        $this->logger->info('Message removed from dead letter queue', [
+        $this->tracer->channel('queue')->info('Message removed from dead letter queue', [
             'queue' => $this->queue,
             'message_id' => $message->messageId(),
         ]);
@@ -211,7 +211,7 @@ final class Replayer
         $amqpMsg->nack(true);
         $skipped++;
 
-        $this->logger->debug('Message skipped during replay', [
+        $this->tracer->channel('queue')->debug('Message skipped during replay', [
             'queue' => $this->queue,
             'message_id' => $message->messageId(),
         ]);

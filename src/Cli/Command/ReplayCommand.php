@@ -14,13 +14,13 @@ declare(strict_types=1);
 
 namespace PHPdot\RabbitMQ\Cli\Command;
 
+use PHPdot\Contracts\Logs\TracerInterface;
 use PHPdot\RabbitMQ\Config\RabbitMQConfig;
 use PHPdot\RabbitMQ\Enum\ReplayAction;
 use PHPdot\RabbitMQ\Message;
 use PHPdot\RabbitMQ\RabbitMQConnection;
 use PHPdot\RabbitMQ\Replayer;
 use PHPdot\RabbitMQ\Topology\TopologyManager;
-use Psr\Log\NullLogger;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -38,6 +38,7 @@ final class ReplayCommand extends Command
      * @param RabbitMQConfig $config Broker connection settings
      */
     public function __construct(
+        private readonly TracerInterface $tracer,
         private readonly RabbitMQConfig $config,
     ) {
         parent::__construct();
@@ -59,7 +60,7 @@ final class ReplayCommand extends Command
         $limit = max(1, is_numeric($limitOpt) ? (int) $limitOpt : 10);
         $dryRun = (bool) $input->getOption('dry-run');
 
-        $connection = new RabbitMQConnection($this->config);
+        $connection = new RabbitMQConnection($this->config, $this->tracer);
         try {
             $connection->connect();
         } catch (Throwable $e) {
@@ -68,8 +69,8 @@ final class ReplayCommand extends Command
             return Command::FAILURE;
         }
 
-        $topology = new TopologyManager($this->config, new NullLogger());
-        $replayer = (new Replayer($queue, $connection, $topology, new NullLogger()))->limit($limit);
+        $topology = new TopologyManager($this->config, $this->tracer);
+        $replayer = (new Replayer($queue, $connection, $topology, $this->tracer))->limit($limit);
 
         $output->writeln('');
         $output->writeln(sprintf(

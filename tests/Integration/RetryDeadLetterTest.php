@@ -6,12 +6,13 @@ namespace PHPdot\RabbitMQ\Tests\Integration;
 
 use PhpAmqpLib\Message\AMQPMessage;
 use PHPdot\RabbitMQ\Config\RabbitMQConfig;
+use PHPdot\RabbitMQ\Exception\ConnectionException;
 use PHPdot\RabbitMQ\RabbitMQConnection;
+use PHPdot\RabbitMQ\Tests\Support\SilentTracer;
 use PHPdot\RabbitMQ\Topology\TopologyManager;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\NullLogger;
 
 #[Group('integration')]
 final class RetryDeadLetterTest extends TestCase
@@ -32,8 +33,8 @@ final class RetryDeadLetterTest extends TestCase
                 password: getenv('RABBITMQ_PASS') ?: 'guest',
                 timeoutMs: 500,
                 maxRetries: 1,
-            )))->connect()->close();
-        } catch (\Throwable $e) {
+            ), new SilentTracer()))->connect()->close();
+        } catch (ConnectionException $e) {
             $this->markTestSkipped('RabbitMQ is not available: ' . $e->getMessage());
         }
 
@@ -66,7 +67,7 @@ final class RetryDeadLetterTest extends TestCase
                     'auto_delete' => true,
                 ],
             ],
-        ));
+        ), new SilentTracer());
     }
 
     protected function tearDown(): void
@@ -115,7 +116,7 @@ final class RetryDeadLetterTest extends TestCase
             ],
         );
 
-        $topology = new TopologyManager($config, new NullLogger());
+        $topology = new TopologyManager($config, new SilentTracer());
         $channel = $this->connection->getChannel();
 
         $topology->prepareForConsume($this->queueName, $channel);
@@ -154,7 +155,7 @@ final class RetryDeadLetterTest extends TestCase
             ],
         );
 
-        $topology = new TopologyManager($config, new NullLogger());
+        $topology = new TopologyManager($config, new SilentTracer());
         $channel = $this->connection->getChannel();
 
         $topology->prepareForConsume($this->queueName, $channel);
@@ -194,7 +195,7 @@ final class RetryDeadLetterTest extends TestCase
             ],
         );
 
-        $topology = new TopologyManager($config, new NullLogger());
+        $topology = new TopologyManager($config, new SilentTracer());
 
         self::assertSame('dead.exchange', $topology->getDeadLetterExchange('myqueue'));
         self::assertSame('dead.key', $topology->getDeadLetterRoutingKey('myqueue'));
@@ -212,7 +213,7 @@ final class RetryDeadLetterTest extends TestCase
             ],
         );
 
-        $topology = new TopologyManager($config, new NullLogger());
+        $topology = new TopologyManager($config, new SilentTracer());
 
         self::assertSame('failed-exchange', $topology->getDeadLetterExchange('myqueue'));
         self::assertSame('', $topology->getDeadLetterRoutingKey('myqueue'));
@@ -229,7 +230,7 @@ final class RetryDeadLetterTest extends TestCase
             ],
         );
 
-        $topology = new TopologyManager($config, new NullLogger());
+        $topology = new TopologyManager($config, new SilentTracer());
 
         self::assertNull($topology->getDeadLetterExchange('myqueue'));
     }

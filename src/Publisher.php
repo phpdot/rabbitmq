@@ -15,9 +15,9 @@ namespace PHPdot\RabbitMQ;
 
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
+use PHPdot\Contracts\Logs\TracerInterface;
 use PHPdot\RabbitMQ\Exception\PublishException;
 use PHPdot\RabbitMQ\Topology\TopologyManager;
-use Psr\Log\LoggerInterface;
 use Throwable;
 
 final class Publisher
@@ -46,13 +46,13 @@ final class Publisher
      * @param string $content The message body to publish
      * @param RabbitMQConnection $connection The AMQP connection
      * @param TopologyManager $topology The topology manager for exchange/queue declarations
-     * @param LoggerInterface $logger The logger instance
+     * @param TracerInterface $tracer The logger instance
      */
     public function __construct(
         private readonly string $content,
         private readonly RabbitMQConnection $connection,
         private readonly TopologyManager $topology,
-        private readonly LoggerInterface $logger,
+        private readonly TracerInterface $tracer,
     ) {}
 
     /**
@@ -163,6 +163,9 @@ final class Publisher
     /**
      * Publishes the message to the specified exchange.
      *
+     * Stamps the active span's W3C `traceparent` so a consumer can continue the trace, unless
+     * the caller set one — a replayed message keeps the trace of the request that first sent it.
+     *
      * @param string $exchange The target exchange name
      * @param string $routingKey The routing key
      *
@@ -172,66 +175,76 @@ final class Publisher
      */
     public function publish(string $exchange, string $routingKey = ''): bool
     {
-        try {
-            $this->connection->ensureConnected();
-            $channel = $this->connection->getChannel();
-            $this->topology->prepareForPublish($exchange, $channel);
+        return $this->tracer->channel('queue')->trace('mq.publish', 'producer', function () use ($exchange, $routingKey): bool {
+            $this->tracer->current()
+                ->setAttribute('mq.exchange', $exchange)
+                ->setAttribute('mq.routing_key', $routingKey);
 
-            $body = $this->content;
+            try {
+                $this->connection->ensureConnected();
+                $channel = $this->connection->getChannel();
+                $this->topology->prepareForPublish($exchange, $channel);
 
-            $messageId = $this->messageId !== '' ? $this->messageId : self::generateMessageId();
+                $body = $this->content;
 
-            /**
-             * @var array<string, bool|int|string> $msgProperties
-             */
-            $msgProperties = $this->properties;
-            $msgProperties['message_id'] = $messageId;
-            $msgProperties['timestamp'] = time();
-            $msgProperties['delivery_mode'] = 2;
+                $messageId = $this->messageId !== '' ? $this->messageId : self::generateMessageId();
 
-            $hostname = gethostname();
-            $msgProperties['app_id'] = $this->appId !== '' ? $this->appId : ($hostname !== false ? $hostname : 'unknown');
+                /**
+                 * @var array<string, bool|int|string> $msgProperties
+                 */
+                $msgProperties = $this->properties;
+                $msgProperties['message_id'] = $messageId;
+                $msgProperties['timestamp'] = time();
+                $msgProperties['delivery_mode'] = 2;
 
-            if (!isset($msgProperties['content_type'])) {
-                $msgProperties['content_type'] = json_validate($body) ? 'application/json' : 'text/plain';
-            }
+                $hostname = gethostname();
+                $msgProperties['app_id'] = $this->appId !== '' ? $this->appId : ($hostname !== false ? $hostname : 'unknown');
 
-            if ($this->priority !== null) {
-                $msgProperties['priority'] = $this->priority;
-            }
-
-            $this->headers['x-original-exchange'] = $exchange;
-            $this->headers['x-original-routing-key'] = $routingKey;
-
-            if ($this->compress) {
-                $compressed = gzcompress($body, 9);
-
-                if ($compressed === false) {
-                    throw PublishException::compressionFailed();
+                if (!isset($msgProperties['content_type'])) {
+                    $msgProperties['content_type'] = json_validate($body) ? 'application/json' : 'text/plain';
                 }
 
-                $body = base64_encode($compressed);
-                $msgProperties['content_encoding'] = 'gzip';
+                if ($this->priority !== null) {
+                    $msgProperties['priority'] = $this->priority;
+                }
+
+                $this->headers['x-original-exchange'] = $exchange;
+                $this->headers['x-original-routing-key'] = $routingKey;
+
+                if (!isset($this->headers['traceparent'])) {
+                    $this->headers['traceparent'] = $this->tracer->current()->context()->toTraceparent();
+                }
+
+                if ($this->compress) {
+                    $compressed = gzcompress($body, 9);
+
+                    if ($compressed === false) {
+                        throw PublishException::compressionFailed();
+                    }
+
+                    $body = base64_encode($compressed);
+                    $msgProperties['content_encoding'] = 'gzip';
+                }
+
+                $applicationHeaders = new AMQPTable($this->headers);
+                $msgProperties['application_headers'] = $applicationHeaders;
+
+                $message = new AMQPMessage($body, $msgProperties);
+                $channel->basic_publish($message, $exchange, $routingKey);
+
+                $this->tracer->current()->debug('Message published', [
+                    'exchange' => $exchange,
+                    'routing_key' => $routingKey,
+                    'message_id' => $messageId,
+                ]);
+
+                return true;
+            } catch (PublishException $e) {
+                throw $e;
+            } catch (Throwable $e) {
+                throw PublishException::publishFailed($exchange, $routingKey, $e->getMessage());
             }
-
-            $applicationHeaders = new AMQPTable($this->headers);
-            $msgProperties['application_headers'] = $applicationHeaders;
-
-            $message = new AMQPMessage($body, $msgProperties);
-            $channel->basic_publish($message, $exchange, $routingKey);
-
-            $this->logger->debug('Message published', [
-                'exchange' => $exchange,
-                'routing_key' => $routingKey,
-                'message_id' => $messageId,
-            ]);
-
-            return true;
-        } catch (PublishException $e) {
-            throw $e;
-        } catch (Throwable $e) {
-            throw PublishException::publishFailed($exchange, $routingKey, $e->getMessage());
-        }
+        });
     }
 
     /**

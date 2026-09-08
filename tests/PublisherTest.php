@@ -12,10 +12,10 @@ use PHPdot\RabbitMQ\Config\RabbitMQConfig;
 use PHPdot\RabbitMQ\Exception\PublishException;
 use PHPdot\RabbitMQ\Publisher;
 use PHPdot\RabbitMQ\RabbitMQConnection;
+use PHPdot\RabbitMQ\Tests\Support\SilentTracer;
 use PHPdot\RabbitMQ\Topology\TopologyManager;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\NullLogger;
 use ReflectionClass;
 
 final class PublisherTest extends TestCase
@@ -41,8 +41,8 @@ final class PublisherTest extends TestCase
 
         $connection = $this->buildFakeConnection($config, $channel);
 
-        $topology = new TopologyManager($config);
-        $publisher = new Publisher($content, $connection, $topology, new NullLogger());
+        $topology = new TopologyManager($config, new SilentTracer());
+        $publisher = new Publisher($content, $connection, $topology, new SilentTracer());
 
         return [$publisher, $channel];
     }
@@ -54,7 +54,7 @@ final class PublisherTest extends TestCase
         RabbitMQConfig $config,
         AMQPChannel&\PHPUnit\Framework\MockObject\MockObject $channel,
     ): RabbitMQConnection {
-        $connection = new RabbitMQConnection($config, new NullLogger());
+        $connection = new RabbitMQConnection($config, new SilentTracer());
         $ref = new ReflectionClass($connection);
 
         $refConnected = $ref->getProperty('connected');

@@ -19,9 +19,9 @@ message replay, a set of Symfony Console commands for operating queues, and a co
 | Requirement | Constraint |
 |---|---|
 | PHP | `>= 8.5` |
+| `phpdot/console` | `^0.3` |
 | `php-amqplib/php-amqplib` | `^3.0` |
-| `phpdot/contracts` | `^0.2` |
-| `psr/log` | `^3.0` |
+| `phpdot/contracts` | `^0.3` |
 | `symfony/console` | `^8.0` |
 
 php-amqplib brings `ext-sockets` and `ext-mbstring`. `phpdot/container` is a dev-only suggestion — the
@@ -66,7 +66,7 @@ $conn->consume('tasks.process')->execute(function (Message $msg): TaskStatus {
 ```
 
 Returning `TaskStatus::SUCCESS` acks the message, `RETRY` requeues it through the retry flow, and
-`FAILURE` dead-letters it.
+`DEAD` dead-letters it.
 
 ### Retry and dead-lettering
 
@@ -76,7 +76,7 @@ their retries land on the dead-letter queue, where they can be inspected and rep
 ```php
 $result = $conn->replay('tasks.process.dead')
     ->limit(10)
-    ->execute(); // or ->dryRun() to preview
+    ->execute();
 ```
 
 ### CLI commands

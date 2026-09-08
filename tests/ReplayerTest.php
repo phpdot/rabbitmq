@@ -13,10 +13,10 @@ use PHPdot\RabbitMQ\Enum\ReplayAction;
 use PHPdot\RabbitMQ\Message;
 use PHPdot\RabbitMQ\RabbitMQConnection;
 use PHPdot\RabbitMQ\Replayer;
+use PHPdot\RabbitMQ\Tests\Support\SilentTracer;
 use PHPdot\RabbitMQ\Topology\TopologyManager;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\NullLogger;
 use ReflectionClass;
 use RuntimeException;
 
@@ -47,8 +47,8 @@ final class ReplayerTest extends TestCase
         );
 
         $connection = $this->buildFakeConnection($config, $channel);
-        $topology = new TopologyManager($config);
-        $replayer = new Replayer(self::DLQ, $connection, $topology, new NullLogger());
+        $topology = new TopologyManager($config, new SilentTracer());
+        $replayer = new Replayer(self::DLQ, $connection, $topology, new SilentTracer());
 
         return [$replayer, $channel, $connection];
     }
@@ -60,7 +60,7 @@ final class ReplayerTest extends TestCase
         RabbitMQConfig $config,
         AMQPChannel&\PHPUnit\Framework\MockObject\MockObject $channel,
     ): RabbitMQConnection {
-        $connection = new RabbitMQConnection($config, new NullLogger());
+        $connection = new RabbitMQConnection($config, new SilentTracer());
         $ref = new ReflectionClass($connection);
 
         $refConnected = $ref->getProperty('connected');
@@ -125,7 +125,7 @@ final class ReplayerTest extends TestCase
         $index = 0;
 
         $channel->method('basic_get')
-            ->willReturnCallback(function () use (&$messages, &$index): ?AMQPMessage {
+            ->willReturnCallback(function () use (&$messages, &$index): null|AMQPMessage {
                 return $messages[$index++] ?? null;
             });
     }
@@ -425,7 +425,7 @@ final class ReplayerTest extends TestCase
             queues: [self::DLQ => ['bindings' => [['exchange' => 'test', 'routing_key' => 'key']]]],
         );
 
-        $connection = new RabbitMQConnection($config, new NullLogger());
+        $connection = new RabbitMQConnection($config, new SilentTracer());
 
         $replayer = $connection->replay(self::DLQ);
 

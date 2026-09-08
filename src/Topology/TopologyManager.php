@@ -16,11 +16,10 @@ namespace PHPdot\RabbitMQ\Topology;
 
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Wire\AMQPTable;
+use PHPdot\Contracts\Logs\TracerInterface;
 use PHPdot\RabbitMQ\Config\RabbitMQConfig;
 use PHPdot\RabbitMQ\Exception\ConsumeException;
 use PHPdot\RabbitMQ\Exception\PublishException;
-use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
 
 final class TopologyManager
 {
@@ -38,11 +37,11 @@ final class TopologyManager
      * Creates a new topology manager.
      *
      * @param RabbitMQConfig $config The connection configuration containing exchange and queue definitions
-     * @param LoggerInterface $logger The logger instance
+     * @param TracerInterface $tracer The logger instance
      */
     public function __construct(
         private readonly RabbitMQConfig $config,
-        private readonly LoggerInterface $logger = new NullLogger(),
+        private readonly TracerInterface $tracer,
     ) {}
 
     /**
@@ -79,7 +78,7 @@ final class TopologyManager
 
         $this->declaredExchanges[$exchange] = true;
 
-        $this->logger->debug('Exchange declared', ['exchange' => $exchange]);
+        $this->tracer->channel('queue')->debug('Exchange declared', ['exchange' => $exchange]);
 
         foreach ($this->config->queues as $queueName => $queueConfig) {
             $bindings = $queueConfig['bindings'] ?? [];
@@ -93,16 +92,9 @@ final class TopologyManager
                     continue;
                 }
 
-                if (($binding['exchange'] ?? '') === $exchange) {
-                    if (!isset($this->declaredQueues[$queueName])) {
-                        $this->declareQueueWithRetry($queueName, $queueConfig, $channel);
-                    }
-
-                    $channel->queue_bind(
-                        $queueName,
-                        $exchange,
-                        $this->extractString($binding['routing_key'] ?? ''),
-                    );
+                if (($binding['exchange'] ?? '') === $exchange && !isset($this->declaredQueues[$queueName])) {
+                    $this->declareQueueWithRetry($queueName, $queueConfig, $channel);
+                    $this->bindAllBindings($queueName, $queueConfig, $channel);
                 }
             }
         }
@@ -133,7 +125,26 @@ final class TopologyManager
         $queueConfig = $this->config->queues[$queue];
 
         $this->declareQueueWithRetry($queue, $queueConfig, $channel);
+        $this->bindAllBindings($queue, $queueConfig, $channel);
 
+        $this->declaredQueues[$queue] = true;
+    }
+
+    /**
+     * Binds a queue to every exchange its configuration names, declaring each
+     * binding exchange from configuration. Shared by the publish and consume
+     * paths so the first path to touch a queue cannot leave it half-bound —
+     * a publish-side declare used to bind only the matching binding and
+     * stamp the cache, suppressing the consume path's remaining bindings.
+     *
+     * @param string $queue The queue to bind
+     * @param array<string, mixed> $queueConfig The queue's configuration
+     * @param AMQPChannel $channel The AMQP channel to bind on
+     *
+     * @return void
+     */
+    private function bindAllBindings(string $queue, array $queueConfig, AMQPChannel $channel): void
+    {
         $bindings = $queueConfig['bindings'] ?? [];
 
         if (!is_array($bindings)) {
@@ -167,8 +178,23 @@ final class TopologyManager
                 $this->extractString($binding['routing_key'] ?? ''),
             );
         }
+    }
 
-        $this->declaredQueues[$queue] = true;
+    /**
+     * Whether the queue's configuration enables retry infrastructure — the
+     * retry-DLX arguments that make a nack(requeue: false) land in the
+     * retry queue instead of the void.
+     *
+     * @param string $queue The queue name
+     *
+     * @return bool
+     */
+    public function hasRetryInfrastructure(string $queue): bool
+    {
+        $queueConfig = $this->config->queues[$queue] ?? [];
+        $retry = $queueConfig['retry'] ?? [];
+
+        return is_array($retry) && $this->extractBool($retry['enable'] ?? false);
     }
 
     /**
@@ -334,7 +360,12 @@ final class TopologyManager
     }
 
     /**
-     * Declares a queue with retry infrastructure if enabled.
+     * Declares a queue with retry infrastructure if enabled. When retry is
+     * enabled the retry-DLX arguments are authoritative — they are the
+     * mechanism routing nacked messages to the retry queue — so they
+     * override any hand-set x-dead-letter-* in the queue's arguments.
+     * Deliberate, not silent: point dead-lettering somewhere else by
+     * disabling retry, not by overriding the arguments.
      *
      * @param string $queue The queue name
      * @param array<string, mixed> $queueConfig Raw queue configuration

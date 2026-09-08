@@ -7,6 +7,7 @@ namespace PHPdot\RabbitMQ\Tests\Topology;
 use PHPdot\RabbitMQ\Config\RabbitMQConfig;
 use PHPdot\RabbitMQ\Exception\ConsumeException;
 use PHPdot\RabbitMQ\Exception\PublishException;
+use PHPdot\RabbitMQ\Tests\Support\SilentTracer;
 use PHPdot\RabbitMQ\Topology\TopologyManager;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -17,7 +18,7 @@ final class TopologyManagerTest extends TestCase
     public function constructAcceptsConnectionConfig(): void
     {
         $config = new RabbitMQConfig();
-        $manager = new TopologyManager($config);
+        $manager = new TopologyManager($config, new SilentTracer());
 
         self::assertInstanceOf(TopologyManager::class, $manager);
     }
@@ -26,7 +27,7 @@ final class TopologyManagerTest extends TestCase
     public function resetClearsDeclaredCache(): void
     {
         $config = new RabbitMQConfig();
-        $manager = new TopologyManager($config);
+        $manager = new TopologyManager($config, new SilentTracer());
 
         // reset() should not throw and should be callable multiple times
         $manager->reset();
@@ -41,7 +42,7 @@ final class TopologyManagerTest extends TestCase
         $config = new RabbitMQConfig(
             exchanges: [],
         );
-        $manager = new TopologyManager($config);
+        $manager = new TopologyManager($config, new SilentTracer());
 
         $this->expectException(PublishException::class);
         $this->expectExceptionMessageMatches('/not-configured/');
@@ -58,7 +59,7 @@ final class TopologyManagerTest extends TestCase
         $config = new RabbitMQConfig(
             queues: [],
         );
-        $manager = new TopologyManager($config);
+        $manager = new TopologyManager($config, new SilentTracer());
 
         $this->expectException(ConsumeException::class);
         $this->expectExceptionMessageMatches('/not-configured/');
@@ -75,7 +76,7 @@ final class TopologyManagerTest extends TestCase
                 'events' => ['type' => 'topic', 'durable' => true],
             ],
         );
-        $manager = new TopologyManager($config);
+        $manager = new TopologyManager($config, new SilentTracer());
 
         $channel = $this->createMock(\PhpAmqpLib\Channel\AMQPChannel::class);
         $channel->expects(self::once())
@@ -93,7 +94,7 @@ final class TopologyManagerTest extends TestCase
                 'events' => ['type' => 'topic', 'durable' => true],
             ],
         );
-        $manager = new TopologyManager($config);
+        $manager = new TopologyManager($config, new SilentTracer());
 
         $channel = $this->createMock(\PhpAmqpLib\Channel\AMQPChannel::class);
         $channel->expects(self::once())
@@ -112,7 +113,7 @@ final class TopologyManagerTest extends TestCase
                 'events' => ['type' => 'topic', 'durable' => true],
             ],
         );
-        $manager = new TopologyManager($config);
+        $manager = new TopologyManager($config, new SilentTracer());
 
         $channel = $this->createMock(\PhpAmqpLib\Channel\AMQPChannel::class);
         $channel->expects(self::exactly(2))
@@ -139,7 +140,7 @@ final class TopologyManagerTest extends TestCase
                 ],
             ],
         );
-        $manager = new TopologyManager($config);
+        $manager = new TopologyManager($config, new SilentTracer());
 
         $channel = $this->createMock(\PhpAmqpLib\Channel\AMQPChannel::class);
         $channel->expects(self::once())
@@ -169,7 +170,7 @@ final class TopologyManagerTest extends TestCase
                 ],
             ],
         );
-        $manager = new TopologyManager($config);
+        $manager = new TopologyManager($config, new SilentTracer());
 
         $channel = $this->createMock(\PhpAmqpLib\Channel\AMQPChannel::class);
         $channel->expects(self::once())
@@ -199,7 +200,7 @@ final class TopologyManagerTest extends TestCase
                 ],
             ],
         );
-        $manager = new TopologyManager($config);
+        $manager = new TopologyManager($config, new SilentTracer());
 
         $channel = $this->createMock(\PhpAmqpLib\Channel\AMQPChannel::class);
         $channel->expects(self::once())

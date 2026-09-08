@@ -16,11 +16,10 @@ namespace PHPdot\RabbitMQ;
 
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
+use PHPdot\Contracts\Logs\TracerInterface;
 use PHPdot\RabbitMQ\Config\RabbitMQConfig;
 use PHPdot\RabbitMQ\Exception\ConnectionException;
 use PHPdot\RabbitMQ\Topology\TopologyManager;
-use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
 use Throwable;
 
 final class RabbitMQConnection
@@ -37,13 +36,13 @@ final class RabbitMQConnection
      * Creates a new RabbitMQConnection instance.
      *
      * @param RabbitMQConfig $config The connection configuration
-     * @param LoggerInterface $logger The logger instance
+     * @param TracerInterface $tracer The logger instance
      */
     public function __construct(
         private readonly RabbitMQConfig $config,
-        private readonly LoggerInterface $logger = new NullLogger(),
+        private readonly TracerInterface $tracer,
     ) {
-        $this->topology = new TopologyManager($this->config, $this->logger);
+        $this->topology = new TopologyManager($this->config, $this->tracer);
     }
 
     /**
@@ -73,7 +72,7 @@ final class RabbitMQConnection
             $this->channel = $this->connection->channel();
             $this->connected = true;
 
-            $this->logger->info('Connected to RabbitMQ', [
+            $this->tracer->channel('queue')->info('Connected to RabbitMQ', [
                 'host' => $this->config->host,
                 'port' => $this->config->port,
                 'vhost' => $this->config->vhost,
@@ -118,8 +117,13 @@ final class RabbitMQConnection
     }
 
     /**
-     * Closes and re-establishes the connection with exponential backoff.
-     *
+     * Closes and re-establishes a connection that was previously alive, with
+     * exponential backoff. A connection that never existed is a FIRST
+     * connect — one dial, one timeout, no retry budget burned, no
+     * "Reconnected" line for a connection that was never open (ensureConnected
+     * routes first use to connect()). With maxRetries zero a lost connection
+     * is refused immediately: the critical line names the exhaustion, the
+     * throw names the loss — a supervisor reading the exit owns the restart.
      *
      * @throws ConnectionException If all reconnection attempts fail
      *
@@ -136,7 +140,7 @@ final class RabbitMQConnection
             try {
                 $this->connect();
 
-                $this->logger->info('Reconnected to RabbitMQ', [
+                $this->tracer->channel('queue')->info('Reconnected to RabbitMQ', [
                     'attempt' => $attempt,
                 ]);
 
@@ -145,7 +149,7 @@ final class RabbitMQConnection
                 $lastError = $e->getMessage();
                 $delay = $this->config->retryDelayMs * (2 ** ($attempt - 1));
 
-                $this->logger->warning('Reconnection attempt failed', [
+                $this->tracer->channel('queue')->warning('Reconnection attempt failed', [
                     'attempt' => $attempt,
                     'max_retries' => $this->config->maxRetries,
                     'delay_ms' => $delay,
@@ -155,6 +159,11 @@ final class RabbitMQConnection
                 usleep($delay * 1000);
             }
         }
+
+        $this->tracer->channel('queue')->critical('RabbitMQ connection permanently lost after retries', [
+            'max_retries' => $this->config->maxRetries,
+            'error' => $lastError,
+        ]);
 
         throw ConnectionException::reconnectFailed($lastError);
     }
@@ -206,6 +215,12 @@ final class RabbitMQConnection
             return;
         }
 
+        if ($this->connection === null) {
+            $this->connect();
+
+            return;
+        }
+
         $this->reconnect();
     }
 
@@ -218,7 +233,7 @@ final class RabbitMQConnection
      */
     public function message(string $content): Publisher
     {
-        return new Publisher($content, $this, $this->topology, $this->logger);
+        return new Publisher($content, $this, $this->topology, $this->tracer);
     }
 
     /**
@@ -230,7 +245,7 @@ final class RabbitMQConnection
      */
     public function consume(string $queue): Consumer
     {
-        return new Consumer($queue, $this, $this->topology, $this->logger);
+        return new Consumer($queue, $this, $this->topology, $this->tracer);
     }
 
     /**
@@ -242,7 +257,7 @@ final class RabbitMQConnection
      */
     public function replay(string $queue): Replayer
     {
-        return new Replayer($queue, $this, $this->topology, $this->logger);
+        return new Replayer($queue, $this, $this->topology, $this->tracer);
     }
 
     /**

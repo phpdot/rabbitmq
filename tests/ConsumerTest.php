@@ -14,10 +14,10 @@ use PHPdot\RabbitMQ\Enum\TaskStatus;
 use PHPdot\RabbitMQ\Exception\ConsumeException;
 use PHPdot\RabbitMQ\Message;
 use PHPdot\RabbitMQ\RabbitMQConnection;
+use PHPdot\RabbitMQ\Tests\Support\SilentTracer;
 use PHPdot\RabbitMQ\Topology\TopologyManager;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\NullLogger;
 use ReflectionClass;
 
 final class ConsumerTest extends TestCase
@@ -44,8 +44,8 @@ final class ConsumerTest extends TestCase
 
         $connection = $this->buildFakeConnection($config, $channel);
 
-        $topology = new TopologyManager($config);
-        $consumer = new Consumer($queue, $connection, $topology, new NullLogger());
+        $topology = new TopologyManager($config, new SilentTracer());
+        $consumer = new Consumer($queue, $connection, $topology, new SilentTracer());
 
         return [$consumer, $channel];
     }
@@ -57,7 +57,7 @@ final class ConsumerTest extends TestCase
         RabbitMQConfig $config,
         AMQPChannel&\PHPUnit\Framework\MockObject\MockObject $channel,
     ): RabbitMQConnection {
-        $connection = new RabbitMQConnection($config, new NullLogger());
+        $connection = new RabbitMQConnection($config, new SilentTracer());
         $ref = new ReflectionClass($connection);
 
         $refConnected = $ref->getProperty('connected');
@@ -500,7 +500,7 @@ final class ConsumerTest extends TestCase
         $this->setupConsumeLoop($channel, $testMsg);
 
         $channel->expects(self::once())
-            ->method('basic_ack')
+            ->method('basic_nack')
             ->with('tag-1');
 
         $channel->expects(self::never())
@@ -518,7 +518,7 @@ final class ConsumerTest extends TestCase
         $this->setupConsumeLoop($channel, $testMsg);
 
         $channel->expects(self::once())
-            ->method('basic_ack')
+            ->method('basic_nack')
             ->with('tag-1');
 
         $channel->expects(self::never())
@@ -658,7 +658,7 @@ final class ConsumerTest extends TestCase
                     'dead' => 'dead',
                 ],
             ],
-        ));
+        ), new SilentTracer());
 
         $reflection = new ReflectionClass($connection);
 
@@ -684,9 +684,9 @@ final class ConsumerTest extends TestCase
                     'dead' => 'dead',
                 ],
             ],
-        ));
+        ), new SilentTracer());
 
-        $consumer = new Consumer($queue, $connection, $topology, new NullLogger());
+        $consumer = new Consumer($queue, $connection, $topology, new SilentTracer());
 
         return [$consumer, $channel, $connection];
     }
